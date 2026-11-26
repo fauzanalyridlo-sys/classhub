@@ -26,11 +26,24 @@ export default async function PesertaPengumpulanPage() {
 
   if (!user) redirect("/");
 
-  const { data: profile, error: profileError } = await supabase
+  const [profileResult, participantDivisionResult] = await Promise.all([
+    supabase
     .from("profiles")
     .select("id, role")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle(),
+
+    supabase
+      .from("participant_divisions")
+      .select("id, division_id")
+      .eq("user_id", user.id)
+      .is("ended_at", null)
+      .maybeSingle()
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
+  const { data: participantDivision, error: participantDivisionError } = participantDivisionResult;
+
 
   if (profileError || !profile) redirect("/");
 
@@ -39,13 +52,7 @@ export default async function PesertaPengumpulanPage() {
   }
 
   // Pastikan peserta memiliki penugasan divisi aktif.
-  const { data: participantDivision, error: participantDivisionError } =
-    await supabase
-      .from("participant_divisions")
-      .select("id, division_id")
-      .eq("user_id", user.id)
-      .is("ended_at", null)
-      .maybeSingle();
+
 
   if (participantDivisionError) {
     console.error(
@@ -168,18 +175,32 @@ export default async function PesertaPengumpulanPage() {
     );
   }
 
-  // Ambil anggota aktif dari kelompok dan divisi yang sama.
-  const { data: groupMembers, error: groupMembersError } = await supabase
-    .from("group_members")
-    .select("user_id, is_leader, joined_at")
-    .eq("group_id", group.id)
-    .eq("division_id", division.id)
-    .is("left_at", null)
-    .order("is_leader", { ascending: false })
-    .order("joined_at", { ascending: true });
+  // Ambil anggota kelompok dan daftar pengumpulan secara bersamaan.
+  const [groupMembersResult, submissionsResult] = await Promise.all([
+    supabase
+      .from("group_members")
+      .select("user_id, is_leader, joined_at")
+      .eq("group_id", group.id)
+      .eq("division_id", division.id)
+      .is("left_at", null)
+      .order("is_leader", { ascending: false })
+      .order("joined_at", { ascending: true }),
 
-  if (groupMembersError || !groupMembers) {
-    console.error("Submission group members error:", groupMembersError);
+    supabase
+      .from("submissions")
+      .select(
+        "id, assignment_id, status, original_file_name, file_size, submitted_at, updated_at, revision_allowed_until"
+      )
+      .eq("group_id", group.id)
+      .eq("division_id", division.id)
+      .order("submitted_at", { ascending: false }),
+  ]);
+
+  if (groupMembersResult.error || !groupMembersResult.data) {
+    console.error(
+      "Submission group members error:",
+      groupMembersResult.error
+    );
 
     return (
       <PesertaPengumpulanView
@@ -191,6 +212,7 @@ export default async function PesertaPengumpulanPage() {
     );
   }
 
+  const groupMembers = groupMembersResult.data;
   const memberUserIds = groupMembers.map((member) => member.user_id);
 
   const { data: memberProfiles, error: memberProfilesError } =
@@ -226,18 +248,8 @@ export default async function PesertaPengumpulanPage() {
     }
   );
 
-  // Ambil pengumpulan hanya untuk kelompok dan divisi tervalidasi.
-  const { data: submissions, error: submissionsError } = await supabase
-    .from("submissions")
-    .select(
-      "id, assignment_id, status, original_file_name, file_size, submitted_at, updated_at, revision_allowed_until"
-    )
-    .eq("group_id", group.id)
-    .eq("division_id", division.id)
-    .order("submitted_at", { ascending: false });
-
-  if (submissionsError || !submissions) {
-    console.error("Submission data error:", submissionsError);
+  if (submissionsResult.error || !submissionsResult.data) {
+    console.error("Submission data error:", submissionsResult.error);
 
     return (
       <PesertaPengumpulanView
@@ -248,6 +260,8 @@ export default async function PesertaPengumpulanPage() {
       />
     );
   }
+
+  const submissions = submissionsResult.data;
 
   if (submissions.length === 0) {
     return (
@@ -264,6 +278,7 @@ export default async function PesertaPengumpulanPage() {
     ...new Set(submissions.map((submission) => submission.assignment_id)),
   ];
 
+  // Ambil tugas, kontributor, dan revisi secara bersamaan.
   const [assignmentsResult, membersResult, revisionsResult] =
     await Promise.all([
       supabase

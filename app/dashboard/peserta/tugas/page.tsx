@@ -26,11 +26,24 @@ export default async function PesertaTugasPage() {
 
   if (!user) redirect("/");
 
-  const { data: profile, error: profileError } = await supabase
+  const [profileResult, participantDivisionResult] = await Promise.all([
+    supabase
     .from("profiles")
     .select("role")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle(),
+
+    supabase
+      .from("participant_divisions")
+      .select("id, division_id")
+      .eq("user_id", user.id)
+      .is("ended_at", null)
+      .maybeSingle()
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
+  const { data: participantDivision, error: participantDivisionError } = participantDivisionResult;
+
 
   if (profileError || !profile) redirect("/");
 
@@ -38,13 +51,7 @@ export default async function PesertaTugasPage() {
     redirect(profile.role === "PIC" ? "/dashboard/pic" : "/");
   }
 
-  const { data: participantDivision, error: participantDivisionError } =
-    await supabase
-      .from("participant_divisions")
-      .select("id, division_id")
-      .eq("user_id", user.id)
-      .is("ended_at", null)
-      .maybeSingle();
+
 
   if (participantDivisionError) {
     console.error("Task participant division error:", participantDivisionError);
@@ -84,14 +91,26 @@ export default async function PesertaTugasPage() {
     return <PesertaTugasView tasks={[]} hasGroup={false} />;
   }
 
-  const { data: assignments, error: assignmentsError } = await supabase
-    .from("assignments")
-    .select("id, title, module, description, deadline")
-    .eq("division_id", division.id)
-    .order("deadline", { ascending: true });
+  // Ambil daftar tugas dan keanggotaan secara bersamaan.
+  const [assignmentsResult, membershipResult] = await Promise.all([
+    supabase
+      .from("assignments")
+      .select("id, title, module, description, deadline")
+      .eq("division_id", division.id)
+      .order("deadline", { ascending: true }),
 
-  if (assignmentsError || !assignments) {
-    console.error("Task assignments error:", assignmentsError);
+    supabase
+      .from("group_members")
+      .select("group_id")
+      .eq("user_id", user.id)
+      .eq("participant_division_id", participantDivision.id)
+      .eq("division_id", division.id)
+      .is("left_at", null)
+      .maybeSingle(),
+  ]);
+
+  if (assignmentsResult.error || !assignmentsResult.data) {
+    console.error("Task assignments error:", assignmentsResult.error);
 
     return (
       <PesertaTugasView
@@ -102,17 +121,8 @@ export default async function PesertaTugasPage() {
     );
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("group_members")
-    .select("group_id")
-    .eq("user_id", user.id)
-    .eq("participant_division_id", participantDivision.id)
-    .eq("division_id", division.id)
-    .is("left_at", null)
-    .maybeSingle();
-
-  if (membershipError) {
-    console.error("Task membership error:", membershipError);
+  if (membershipResult.error) {
+    console.error("Task membership error:", membershipResult.error);
 
     return (
       <PesertaTugasView
@@ -122,6 +132,9 @@ export default async function PesertaTugasPage() {
       />
     );
   }
+
+  const assignments = assignmentsResult.data;
+  const membership = membershipResult.data;
 
   let hasGroup = false;
   let submissionStatusByAssignment = new Map<number, "submitted" | "late">();
