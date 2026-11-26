@@ -5,10 +5,7 @@ import PasswordForm from "@/app/assets/components/peserta/password/password-form
 export default function PesertaPasswordView() {
   return (
     <div className="ch-peserta-dashboard">
-      <PesertaSidebar
-        activeItem="Password"
-        isPasswordChangeRequired={true}
-      />
+      <PesertaSidebar activeItem="Password" />
 
       <main className="ch-peserta-main">
         <div className="ch-peserta-content">

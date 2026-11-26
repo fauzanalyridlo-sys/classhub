@@ -22,7 +22,7 @@ export default async function PesertaPasswordPage() {
 
   const { data: profile, error } = await supabase
     .from("profiles")
-    .select("role, account_status, must_change_password")
+    .select("role, account_status")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -32,10 +32,6 @@ export default async function PesertaPasswordPage() {
 
   if (profile.role !== "PESERTA") {
     redirect(profile.role === "PIC" ? "/dashboard/pic" : "/");
-  }
-
-  if (!profile.must_change_password) {
-    redirect("/dashboard/peserta");
   }
 
   return <PesertaPasswordView />;

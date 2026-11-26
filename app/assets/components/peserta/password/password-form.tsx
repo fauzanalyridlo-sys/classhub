@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
 
 type MessageState = {
   type: "success" | "error";
@@ -9,8 +8,6 @@ type MessageState = {
 } | null;
 
 export default function PasswordForm() {
-  const router = useRouter();
-
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -98,12 +95,8 @@ export default function PasswordForm() {
 
       setMessage({
         type: "success",
-        text:
-          "Password berhasil diperbarui. Mengarahkan ke Dashboard...",
+        text: "Password berhasil diperbarui.",
       });
-
-      router.replace("/dashboard/peserta");
-      router.refresh();
     } catch (error) {
       console.error("Password change request failed:", error);
 
@@ -149,13 +142,13 @@ export default function PasswordForm() {
       >
         <div className="ch-peserta-password-field">
           <label htmlFor="current-password">
-            Password Lama (dari PIC)
+            Password Lama
           </label>
           <input
             id="current-password"
             name="currentPassword"
             type="password"
-            placeholder="Masukkan password awal yang diberikan oleh PIC"
+            placeholder="Masukkan password yang saat ini digunakan"
             autoComplete="current-password"
             value={currentPassword}
             onChange={(event) =>

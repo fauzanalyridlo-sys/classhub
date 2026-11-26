@@ -51,7 +51,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!profile.must_change_password) {
+    // PIC tetap hanya dapat menggunakan alur password wajib.
+    // PESERTA dapat mengganti password kapan saja.
+    if (profile.role === "PIC" && !profile.must_change_password) {
       return jsonError(
         "Akun tidak sedang diwajibkan mengganti password.",
         400
@@ -75,6 +77,7 @@ export async function POST(request: NextRequest) {
     }
 
     const requestBody = body as ChangePasswordRequest;
+
     const password =
       typeof requestBody.password === "string"
         ? requestBody.password
@@ -186,42 +189,45 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const admin = createAdminClient();
+    // Hanya menyelesaikan status password wajib jika sebelumnya masih aktif.
+    if (profile.must_change_password) {
+      const admin = createAdminClient();
 
-    const { data: updatedProfile, error: updateError } = await admin
-      .from("profiles")
-      .update({ must_change_password: false })
-      .eq("id", user.id)
-      .eq("account_status", "active")
-      .eq("must_change_password", true)
-      .select("id")
-      .maybeSingle();
-
-    if (updateError || !updatedProfile) {
-      console.error(
-        "Change password profile flag update failed:",
-        updateError
-      );
-
-      const {
-        data: finalProfile,
-        error: finalProfileError,
-      } = await admin
+      const { data: updatedProfile, error: updateError } = await admin
         .from("profiles")
-        .select("must_change_password")
+        .update({ must_change_password: false })
         .eq("id", user.id)
+        .eq("account_status", "active")
+        .eq("must_change_password", true)
+        .select("id")
         .maybeSingle();
 
-      if (
-        finalProfileError ||
-        !finalProfile ||
-        finalProfile.must_change_password
-      ) {
-        return jsonError(
-          "Password mungkin sudah berhasil diperbarui, tetapi status akun belum selesai diperbarui. Coba kembali menggunakan password yang saat ini aktif sebagai password lama, lalu tentukan password baru yang berbeda.",
-          500,
-          "PASSWORD_UPDATED_PROFILE_PENDING"
+      if (updateError || !updatedProfile) {
+        console.error(
+          "Change password profile flag update failed:",
+          updateError
         );
+
+        const {
+          data: finalProfile,
+          error: finalProfileError,
+        } = await admin
+          .from("profiles")
+          .select("must_change_password")
+          .eq("id", user.id)
+          .maybeSingle();
+
+        if (
+          finalProfileError ||
+          !finalProfile ||
+          finalProfile.must_change_password
+        ) {
+          return jsonError(
+            "Password mungkin sudah berhasil diperbarui, tetapi status akun belum selesai diperbarui. Coba kembali menggunakan password yang saat ini aktif sebagai password lama, lalu tentukan password baru yang berbeda.",
+            500,
+            "PASSWORD_UPDATED_PROFILE_PENDING"
+          );
+        }
       }
     }
 
