@@ -23,11 +23,24 @@ export default async function PesertaDashboardPage() {
 
   if (!user) redirect("/");
 
-  const { data: profile, error: profileError } = await supabase
+  const [profileResult, participantDivisionResult] = await Promise.all([
+    supabase
     .from("profiles")
     .select("full_name, role, account_status, must_change_password")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle(),
+
+    supabase
+      .from("participant_divisions")
+      .select("id, division_id")
+      .eq("user_id", user.id)
+      .is("ended_at", null)
+      .maybeSingle()
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
+  const { data: participantDivision, error: participantDivisionError } = participantDivisionResult;
+
 
   if (profileError || !profile) redirect("/");
   if (profile.account_status !== "active") redirect("/");
@@ -39,13 +52,7 @@ export default async function PesertaDashboardPage() {
 
   const welcomeName = profile.full_name ?? "Peserta";
 
-  const { data: participantDivision, error: participantDivisionError } =
-    await supabase
-      .from("participant_divisions")
-      .select("id, division_id")
-      .eq("user_id", user.id)
-      .is("ended_at", null)
-      .maybeSingle();
+
 
   if (participantDivisionError || !participantDivision) {
     return (
@@ -79,17 +86,27 @@ export default async function PesertaDashboardPage() {
     );
   }
 
-  const { data: membership, error: membershipError } = await supabase
-    .from("group_members")
-    .select("group_id, division_id, participant_division_id, is_leader")
-    .eq("user_id", user.id)
-    .eq("division_id", division.id)
-    .eq("participant_division_id", participantDivision.id)
-    .is("left_at", null)
-    .maybeSingle();
+  // Ambil keanggotaan dan daftar tugas secara bersamaan.
+  const [membershipResult, assignmentsResult] = await Promise.all([
+    supabase
+      .from("group_members")
+      .select("group_id, division_id, participant_division_id, is_leader")
+      .eq("user_id", user.id)
+      .eq("division_id", division.id)
+      .eq("participant_division_id", participantDivision.id)
+      .is("left_at", null)
+      .maybeSingle(),
 
-  if (membershipError) {
-    console.error("Dashboard membership error:", membershipError);
+    supabase
+      .from("assignments")
+      .select("id, title, module, deadline")
+      .eq("division_id", division.id)
+      .gte("deadline", new Date().toISOString())
+      .order("deadline", { ascending: true }),
+  ]);
+
+  if (membershipResult.error) {
+    console.error("Dashboard membership error:", membershipResult.error);
 
     return (
       <PesertaDashboardView
@@ -106,6 +123,28 @@ export default async function PesertaDashboardPage() {
       />
     );
   }
+
+  if (assignmentsResult.error || !assignmentsResult.data) {
+    console.error("Dashboard assignments error:", assignmentsResult.error);
+
+    return (
+      <PesertaDashboardView
+        welcomeName={welcomeName}
+        group={null}
+        statistics={{
+          activeTasks: 0,
+          submittedTasks: 0,
+          pendingTasks: 0,
+          memberCount: 0,
+        }}
+        tasks={[]}
+        error="Gagal mengambil daftar tugas."
+      />
+    );
+  }
+
+  const membership = membershipResult.data;
+  const assignments = assignmentsResult.data;
 
   let group: {
     name: string;
@@ -167,34 +206,6 @@ export default async function PesertaDashboardPage() {
     };
 
     memberCount = membersResult.data.length;
-  }
-
-  const now = new Date().toISOString();
-
-  const { data: assignments, error: assignmentsError } = await supabase
-    .from("assignments")
-    .select("id, title, module, deadline")
-    .eq("division_id", division.id)
-    .gte("deadline", now)
-    .order("deadline", { ascending: true });
-
-  if (assignmentsError || !assignments) {
-    console.error("Dashboard assignments error:", assignmentsError);
-
-    return (
-      <PesertaDashboardView
-        welcomeName={welcomeName}
-        group={group}
-        statistics={{
-          activeTasks: 0,
-          submittedTasks: 0,
-          pendingTasks: 0,
-          memberCount,
-        }}
-        tasks={[]}
-        error="Gagal mengambil daftar tugas."
-      />
-    );
   }
 
   let submittedAssignmentIds = new Set<number>();

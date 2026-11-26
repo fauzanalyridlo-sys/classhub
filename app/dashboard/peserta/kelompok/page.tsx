@@ -23,11 +23,24 @@ export default async function PesertaKelompokPage() {
 
   if (!user) redirect("/");
 
-  const { data: profile, error: profileError } = await supabase
+  const [profileResult, participantDivisionResult] = await Promise.all([
+    supabase
     .from("profiles")
     .select("id, role")
     .eq("id", user.id)
-    .maybeSingle();
+    .maybeSingle(),
+
+    supabase
+      .from("participant_divisions")
+      .select("id, division_id")
+      .eq("user_id", user.id)
+      .is("ended_at", null)
+      .maybeSingle()
+  ]);
+
+  const { data: profile, error: profileError } = profileResult;
+  const { data: participantDivision, error: participantDivisionError } = participantDivisionResult;
+
 
   if (profileError || !profile) redirect("/");
 
@@ -36,13 +49,7 @@ export default async function PesertaKelompokPage() {
   }
 
   // Pastikan peserta memiliki penugasan divisi yang masih aktif.
-  const { data: participantDivision, error: participantDivisionError } =
-    await supabase
-      .from("participant_divisions")
-      .select("id, division_id")
-      .eq("user_id", user.id)
-      .is("ended_at", null)
-      .maybeSingle();
+
 
   if (participantDivisionError) {
     console.error(
