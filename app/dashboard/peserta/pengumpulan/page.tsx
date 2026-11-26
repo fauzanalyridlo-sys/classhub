@@ -11,6 +11,7 @@ import "@/app/style/peserta/pengumpulan.css";
 import PesertaPengumpulanView, {
   type SubmissionItem,
   type GroupMemberOption,
+  type AssignmentOption,
 } from "@/app/view/peserta/pengumpulan";
 
 export const instant = false;
@@ -28,31 +29,30 @@ export default async function PesertaPengumpulanPage() {
 
   const [profileResult, participantDivisionResult] = await Promise.all([
     supabase
-    .from("profiles")
-    .select("id, role")
-    .eq("id", user.id)
-    .maybeSingle(),
+      .from("profiles")
+      .select("id, role")
+      .eq("id", user.id)
+      .maybeSingle(),
 
     supabase
       .from("participant_divisions")
       .select("id, division_id")
       .eq("user_id", user.id)
       .is("ended_at", null)
-      .maybeSingle()
+      .maybeSingle(),
   ]);
 
   const { data: profile, error: profileError } = profileResult;
-  const { data: participantDivision, error: participantDivisionError } = participantDivisionResult;
-
+  const {
+    data: participantDivision,
+    error: participantDivisionError,
+  } = participantDivisionResult;
 
   if (profileError || !profile) redirect("/");
 
   if (profile.role !== "PESERTA") {
     redirect(profile.role === "PIC" ? "/dashboard/pic" : "/");
   }
-
-  // Pastikan peserta memiliki penugasan divisi aktif.
-
 
   if (participantDivisionError) {
     console.error(
@@ -80,7 +80,7 @@ export default async function PesertaPengumpulanPage() {
     );
   }
 
-  // Pastikan divisi masih aktif.
+  // Pastikan divisi peserta masih aktif.
   const { data: division, error: divisionError } = await supabase
     .from("divisions")
     .select("id, is_active")
@@ -110,7 +110,7 @@ export default async function PesertaPengumpulanPage() {
     );
   }
 
-  // Cari keanggotaan kelompok dari penugasan divisi aktif.
+  // Cari keanggotaan kelompok peserta.
   const { data: membership, error: membershipError } = await supabase
     .from("group_members")
     .select("group_id, division_id, participant_division_id, is_leader")
@@ -159,7 +159,7 @@ export default async function PesertaPengumpulanPage() {
       <PesertaPengumpulanView
         submissions={[]}
         groupMembers={[]}
-        currentUserIsLeader={false}
+        currentUserIsLeader={membership.is_leader}
         error="Gagal memeriksa informasi kelompok."
       />
     );
@@ -170,13 +170,17 @@ export default async function PesertaPengumpulanPage() {
       <PesertaPengumpulanView
         submissions={[]}
         groupMembers={[]}
-        currentUserIsLeader={false}
+        currentUserIsLeader={membership.is_leader}
       />
     );
   }
 
-  // Ambil anggota kelompok dan daftar pengumpulan secara bersamaan.
-  const [groupMembersResult, submissionsResult] = await Promise.all([
+  // Ambil anggota, pengumpulan, dan seluruh tugas divisi secara bersamaan.
+  const [
+    groupMembersResult,
+    submissionsResult,
+    assignmentsResult,
+  ] = await Promise.all([
     supabase
       .from("group_members")
       .select("user_id, is_leader, joined_at")
@@ -194,6 +198,12 @@ export default async function PesertaPengumpulanPage() {
       .eq("group_id", group.id)
       .eq("division_id", division.id)
       .order("submitted_at", { ascending: false }),
+
+    supabase
+      .from("assignments")
+      .select("id, title, module, description, deadline")
+      .eq("division_id", division.id)
+      .order("deadline", { ascending: true }),
   ]);
 
   if (groupMembersResult.error || !groupMembersResult.data) {
@@ -212,6 +222,37 @@ export default async function PesertaPengumpulanPage() {
     );
   }
 
+  if (assignmentsResult.error || !assignmentsResult.data) {
+    console.error(
+      "Submission assignments error:",
+      assignmentsResult.error
+    );
+
+    return (
+      <PesertaPengumpulanView
+        submissions={[]}
+        groupMembers={[]}
+        currentUserIsLeader={membership.is_leader}
+        error="Gagal mengambil daftar tugas divisi."
+      />
+    );
+  }
+
+  if (submissionsResult.error || !submissionsResult.data) {
+    console.error("Submission data error:", submissionsResult.error);
+
+    return (
+      <PesertaPengumpulanView
+        submissions={[]}
+        groupMembers={[]}
+        currentUserIsLeader={membership.is_leader}
+        error="Gagal mengambil daftar pengumpulan tugas."
+      />
+    );
+  }
+
+  const assignments: AssignmentOption[] = assignmentsResult.data;
+
   const groupMembers = groupMembersResult.data;
   const memberUserIds = groupMembers.map((member) => member.user_id);
 
@@ -222,14 +263,18 @@ export default async function PesertaPengumpulanPage() {
       .in("id", memberUserIds);
 
   if (memberProfilesError || !memberProfiles) {
-    console.error("Submission member profiles error:", memberProfilesError);
+    console.error(
+      "Submission member profiles error:",
+      memberProfilesError
+    );
 
     return (
       <PesertaPengumpulanView
         submissions={[]}
         groupMembers={[]}
         currentUserIsLeader={membership.is_leader}
-        error="Gagal mengambil nama anggota kelompok."
+        assignments={assignments}
+        groupId={group.id}
       />
     );
   }
@@ -248,45 +293,17 @@ export default async function PesertaPengumpulanPage() {
     }
   );
 
-  if (submissionsResult.error || !submissionsResult.data) {
-    console.error("Submission data error:", submissionsResult.error);
-
-    return (
-      <PesertaPengumpulanView
-        submissions={[]}
-        groupMembers={groupMemberOptions}
-        currentUserIsLeader={membership.is_leader}
-        error="Gagal mengambil daftar pengumpulan tugas."
-      />
-    );
-  }
-
   const submissions = submissionsResult.data;
 
-  if (submissions.length === 0) {
-    return (
-      <PesertaPengumpulanView
-        submissions={[]}
-        groupMembers={groupMemberOptions}
-        currentUserIsLeader={membership.is_leader}
-      />
+  // Detail kontributor dan revisi hanya diperlukan jika sudah ada pengumpulan.
+  let submissionItems: SubmissionItem[] = [];
+
+  if (submissions.length > 0) {
+    const submissionIds = submissions.map(
+      (submission) => submission.id
     );
-  }
 
-  const submissionIds = submissions.map((submission) => submission.id);
-  const assignmentIds = [
-    ...new Set(submissions.map((submission) => submission.assignment_id)),
-  ];
-
-  // Ambil tugas, kontributor, dan revisi secara bersamaan.
-  const [assignmentsResult, membersResult, revisionsResult] =
-    await Promise.all([
-      supabase
-        .from("assignments")
-        .select("id, title, module, deadline")
-        .eq("division_id", division.id)
-        .in("id", assignmentIds),
-
+    const [membersResult, revisionsResult] = await Promise.all([
       supabase
         .from("submission_members")
         .select("submission_id, user_id, full_name_snapshot, created_at")
@@ -302,51 +319,44 @@ export default async function PesertaPengumpulanPage() {
         .order("revision_number", { ascending: true }),
     ]);
 
-  if (assignmentsResult.error || !assignmentsResult.data) {
-    console.error(
-      "Submission assignments error:",
-      assignmentsResult.error
-    );
+    if (membersResult.error || !membersResult.data) {
+      console.error(
+        "Submission members error:",
+        membersResult.error
+      );
 
-    return (
-      <PesertaPengumpulanView
-        submissions={[]}
-        groupMembers={groupMemberOptions}
-        currentUserIsLeader={membership.is_leader}
-        error="Gagal mengambil informasi tugas."
-      />
-    );
-  }
+      return (
+        <PesertaPengumpulanView
+          submissions={[]}
+          groupMembers={groupMemberOptions}
+          currentUserIsLeader={membership.is_leader}
+          assignments={assignments}
+          groupId={group.id}
+          error="Gagal mengambil informasi kontributor."
+        />
+      );
+    }
 
-  if (membersResult.error || !membersResult.data) {
-    console.error("Submission members error:", membersResult.error);
+    if (revisionsResult.error || !revisionsResult.data) {
+      console.error(
+        "Submission revisions error:",
+        revisionsResult.error
+      );
 
-    return (
-      <PesertaPengumpulanView
-        submissions={[]}
-        groupMembers={groupMemberOptions}
-        currentUserIsLeader={membership.is_leader}
-        error="Gagal mengambil informasi kontributor."
-      />
-    );
-  }
+      return (
+        <PesertaPengumpulanView
+          submissions={[]}
+          groupMembers={groupMemberOptions}
+          currentUserIsLeader={membership.is_leader}
+          assignments={assignments}
+          groupId={group.id}
+          error="Gagal mengambil riwayat revisi pengumpulan."
+        />
+      );
+    }
 
-  if (revisionsResult.error || !revisionsResult.data) {
-    console.error("Submission revisions error:", revisionsResult.error);
-
-    return (
-      <PesertaPengumpulanView
-        submissions={[]}
-        groupMembers={groupMemberOptions}
-        currentUserIsLeader={membership.is_leader}
-        error="Gagal mengambil riwayat revisi pengumpulan."
-      />
-    );
-  }
-
-  const submissionItems: SubmissionItem[] = submissions.map(
-    (submission) => {
-      const assignment = assignmentsResult.data.find(
+    submissionItems = submissions.map((submission) => {
+      const assignment = assignments.find(
         (item) => item.id === submission.assignment_id
       );
 
@@ -383,14 +393,16 @@ export default async function PesertaPengumpulanPage() {
         contributors,
         revisions,
       };
-    }
-  );
+    });
+  }
 
   return (
     <PesertaPengumpulanView
       submissions={submissionItems}
       groupMembers={groupMemberOptions}
       currentUserIsLeader={membership.is_leader}
+      assignments={assignments}
+      groupId={group.id}
     />
   );
 }
