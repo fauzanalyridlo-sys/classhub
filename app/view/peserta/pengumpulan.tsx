@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import EditSubmissionModal from "@/app/assets/components/peserta/pengumpulan/edit-submission-modal";
+import PengumpulanTugas from "@/app/view/peserta/pengumpulan-tugas";
 import "@/app/style/peserta/popup-edit-pengumpulan.css";
 
 import PesertaSidebar from "@/app/assets/components/layout/peserta/sidebar";
@@ -17,6 +19,14 @@ export interface GroupMemberOption {
   userId: string;
   fullName: string;
   isLeader: boolean;
+}
+
+export interface AssignmentOption {
+  id: number;
+  title: string;
+  module: string | null;
+  description: string | null;
+  deadline: string;
 }
 
 interface SubmissionRevision {
@@ -48,6 +58,8 @@ interface PesertaPengumpulanViewProps {
   submissions: SubmissionItem[];
   groupMembers: GroupMemberOption[];
   currentUserIsLeader: boolean;
+  assignments?: AssignmentOption[];
+  groupId?: number | null;
   error?: string;
 }
 
@@ -74,15 +86,20 @@ export default function PesertaPengumpulanView({
   submissions,
   groupMembers,
   currentUserIsLeader,
+  assignments = [],
+  groupId = null,
   error,
 }: PesertaPengumpulanViewProps) {
+  const router = useRouter();
+
   const [selectedSubmission, setSelectedSubmission] =
     useState<SubmissionItem | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [currentTime, setCurrentTime] = useState<number | null>(null);
+
   const selectedSubmissionId = selectedSubmission?.id;
 
-
+  // Perbarui waktu untuk pemeriksaan batas revisi.
   useEffect(() => {
     if (selectedSubmissionId === undefined) return;
 
@@ -102,10 +119,14 @@ export default function PesertaPengumpulanView({
 
     return () => {
       window.clearInterval(interval);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener(
+        "visibilitychange",
+        handleVisibilityChange
+      );
     };
   }, [selectedSubmissionId]);
 
+  // Tutup modal menggunakan tombol Escape.
   useEffect(() => {
     if (!selectedSubmission) return;
 
@@ -124,14 +145,14 @@ export default function PesertaPengumpulanView({
     };
   }, [selectedSubmission, isEditModalOpen]);
 
-
   const deadlineTime = selectedSubmission?.deadline
     ? new Date(selectedSubmission.deadline).getTime()
     : null;
 
-  const revisionAllowedUntilTime = selectedSubmission?.revisionAllowedUntil
-    ? new Date(selectedSubmission.revisionAllowedUntil).getTime()
-    : null;
+  const revisionAllowedUntilTime =
+    selectedSubmission?.revisionAllowedUntil
+      ? new Date(selectedSubmission.revisionAllowedUntil).getTime()
+      : null;
 
   const canEditSelectedSubmission =
     currentTime !== null &&
@@ -142,15 +163,40 @@ export default function PesertaPengumpulanView({
         Number.isFinite(revisionAllowedUntilTime) &&
         currentTime <= revisionAllowedUntilTime));
 
+  // Tugas yang sudah dikumpulkan tidak ditampilkan lagi pada form upload.
+  const submittedAssignmentIds = new Set(
+    submissions.map((submission) => submission.assignmentId)
+  );
+
+  const pendingAssignments = assignments.filter(
+    (assignment) => !submittedAssignmentIds.has(assignment.id)
+  );
+
+  const uploadGroupMembers = groupMembers.map((member) => ({
+    user_id: member.userId,
+    full_name: member.fullName,
+  }));
+
   return (
     <div className="ch-peserta-dashboard">
       <PesertaSidebar activeItem="Pengumpulan" />
 
       <main className="ch-peserta-main">
         <div className="ch-peserta-content">
-          <PesertaHeader title="Pengumpulan Tugas" description="Lihat pengumpulan kelompok dan informasi berkas tugas yang sudah dikirim." />
+          <PesertaHeader
+            title="Pengumpulan Tugas"
+            description="Lihat pengumpulan kelompok dan informasi berkas tugas yang sudah dikirim."
+          />
 
-
+          {!error && (
+            <PengumpulanTugas
+              groupId={groupId}
+              isLeader={currentUserIsLeader}
+              groupMembers={uploadGroupMembers}
+              assignments={pendingAssignments}
+              submissions={[]}
+            />
+          )}
 
           <section
             className="ch-peserta-submission-panel"
@@ -478,6 +524,11 @@ export default function PesertaPengumpulanView({
             (contributor) => contributor.userId
           )}
           onClose={() => setIsEditModalOpen(false)}
+          onSaved={() => {
+            setIsEditModalOpen(false);
+            setSelectedSubmission(null);
+            router.refresh();
+          }}
         />
       )}
     </div>

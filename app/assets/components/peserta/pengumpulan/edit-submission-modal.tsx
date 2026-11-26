@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-
 import { createClient } from "@/lib/supabase/client";
 
 interface EditSubmissionMember {
@@ -18,6 +16,7 @@ interface EditSubmissionModalProps {
   members: EditSubmissionMember[];
   currentContributorIds: string[];
   onClose: () => void;
+  onSaved: () => void;
 }
 
 interface UploadUrlResponse {
@@ -55,9 +54,8 @@ export default function EditSubmissionModal({
   members,
   currentContributorIds,
   onClose,
+  onSaved,
 }: EditSubmissionModalProps) {
-  const router = useRouter();
-
   const leader = members.find((member) => member.isLeader);
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -78,11 +76,9 @@ export default function EditSubmissionModal({
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
-  const [successMessage, setSuccessMessage] = useState("");
 
   function handleFileChange(file: File | null) {
     setErrorMessage("");
-    setSuccessMessage("");
 
     if (!file) {
       setSelectedFile(null);
@@ -110,7 +106,6 @@ export default function EditSubmissionModal({
 
   function handleContributorChange(userId: string) {
     setErrorMessage("");
-    setSuccessMessage("");
 
     if (leader?.userId === userId) return;
 
@@ -128,14 +123,128 @@ export default function EditSubmissionModal({
     });
   }
 
+  async function handleContributorOnlyUpdate() {
+    const response = await fetch(
+      "/api/submissions/update-contributors",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId,
+          assignmentId,
+          contributorIds: selectedContributorIds,
+        }),
+      }
+    );
+
+    const result = (await response.json()) as SubmitResponse;
+
+    if (!response.ok || !result.success) {
+      throw new Error(
+        result.message || "Gagal memperbarui anggota kontributor."
+      );
+    }
+
+    return result.message;
+  }
+
+  async function handleFileAndContributorUpdate() {
+    if (!selectedFile) {
+      throw new Error("File pengganti belum dipilih.");
+    }
+
+    const extension = selectedFile.name.split(".").pop()?.toLowerCase();
+
+    if (!extension) {
+      throw new Error("Ekstensi file tidak valid.");
+    }
+
+    const fileType = ALLOWED_TYPES[extension];
+
+    const uploadUrlResponse = await fetch(
+      "/api/submissions/upload-url",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          groupId,
+          assignmentId,
+          fileName: selectedFile.name,
+          fileSize: selectedFile.size,
+          fileType,
+        }),
+      }
+    );
+
+    const uploadUrlResult =
+      (await uploadUrlResponse.json()) as UploadUrlResponse;
+
+    if (
+      !uploadUrlResponse.ok ||
+      !uploadUrlResult.success ||
+      !uploadUrlResult.data
+    ) {
+      throw new Error(
+        uploadUrlResult.message || "Gagal menyiapkan proses upload."
+      );
+    }
+
+    const uploadData = uploadUrlResult.data;
+    const supabase = createClient();
+
+    const { error: storageError } = await supabase.storage
+      .from("submissions")
+      .uploadToSignedUrl(
+        uploadData.path,
+        uploadData.token,
+        selectedFile,
+        {
+          contentType: fileType,
+          upsert: false,
+        }
+      );
+
+    if (storageError) {
+      throw new Error(
+        storageError.message || "Gagal mengunggah file ke penyimpanan."
+      );
+    }
+
+    const submitResponse = await fetch("/api/submissions/submit", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        groupId,
+        assignmentId,
+        path: uploadData.path,
+        fileName: uploadData.path.split("/").pop(),
+        originalFileName: selectedFile.name,
+        fileSize: selectedFile.size,
+        fileType,
+        contributorIds: selectedContributorIds,
+      }),
+    });
+
+    const submitResult =
+      (await submitResponse.json()) as SubmitResponse;
+
+    if (!submitResponse.ok || !submitResult.success) {
+      throw new Error(
+        submitResult.message || "Gagal menyimpan perubahan pengumpulan."
+      );
+    }
+
+    return submitResult.message;
+  }
+
   async function handleSubmit() {
     setErrorMessage("");
-    setSuccessMessage("");
-
-    if (!selectedFile) {
-      setErrorMessage("Pilih file pengganti terlebih dahulu.");
-      return;
-    }
 
     if (
       selectedContributorIds.length < 1 ||
@@ -153,96 +262,13 @@ export default function EditSubmissionModal({
     setIsSubmitting(true);
 
     try {
-      const extension = selectedFile.name.split(".").pop()?.toLowerCase();
-
-      if (!extension) {
-        throw new Error("Ekstensi file tidak valid.");
+      if (selectedFile) {
+        await handleFileAndContributorUpdate();
+      } else {
+        await handleContributorOnlyUpdate();
       }
 
-      const fileType = ALLOWED_TYPES[extension];
-
-      const uploadUrlResponse = await fetch(
-        "/api/submissions/upload-url",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            groupId,
-            assignmentId,
-            fileName: selectedFile.name,
-            fileSize: selectedFile.size,
-            fileType,
-          }),
-        }
-      );
-
-      const uploadUrlResult =
-        (await uploadUrlResponse.json()) as UploadUrlResponse;
-
-      if (
-        !uploadUrlResponse.ok ||
-        !uploadUrlResult.success ||
-        !uploadUrlResult.data
-      ) {
-        throw new Error(
-          uploadUrlResult.message || "Gagal menyiapkan proses upload."
-        );
-      }
-
-      const uploadData = uploadUrlResult.data;
-      const supabase = createClient();
-
-      const { error: storageError } = await supabase.storage
-        .from("submissions")
-        .uploadToSignedUrl(
-          uploadData.path,
-          uploadData.token,
-          selectedFile,
-          {
-            contentType: fileType,
-            upsert: false,
-          }
-        );
-
-      if (storageError) {
-        throw new Error(
-          storageError.message || "Gagal mengunggah file ke penyimpanan."
-        );
-      }
-
-      const submitResponse = await fetch("/api/submissions/submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          groupId,
-          assignmentId,
-          path: uploadData.path,
-          fileName: uploadData.path.split("/").pop(),
-          originalFileName: selectedFile.name,
-          fileSize: selectedFile.size,
-          fileType,
-          contributorIds: selectedContributorIds,
-        }),
-      });
-
-      const submitResult =
-        (await submitResponse.json()) as SubmitResponse;
-
-      if (!submitResponse.ok || !submitResult.success) {
-        throw new Error(
-          submitResult.message || "Gagal menyimpan perubahan pengumpulan."
-        );
-      }
-
-      setSuccessMessage(
-        submitResult.message || "Perubahan pengumpulan berhasil disimpan."
-      );
-
-      router.refresh();
+      onSaved();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
@@ -273,7 +299,10 @@ export default function EditSubmissionModal({
           <div>
             <span>Edit Pengumpulan</span>
             <h2 id="ch-peserta-edit-modal-title">{assignmentTitle}</h2>
-            <p>Perbarui file dan daftar anggota yang berkontribusi.</p>
+            <p>
+              Perbarui daftar kontributor atau unggah file pengganti jika
+              diperlukan.
+            </p>
           </div>
 
           <button
@@ -288,7 +317,7 @@ export default function EditSubmissionModal({
 
         <div className="ch-peserta-edit-modal-body">
           <section className="ch-peserta-edit-section">
-            <h3>Upload File Baru</h3>
+            <h3>File Pengganti (Opsional)</h3>
 
             <label
               className="ch-peserta-edit-upload"
@@ -314,13 +343,13 @@ export default function EditSubmissionModal({
               <strong>
                 {selectedFile
                   ? selectedFile.name
-                  : "Klik untuk memilih file"}
+                  : "Klik untuk memilih file pengganti"}
               </strong>
 
               <span>
                 {selectedFile
                   ? `${(selectedFile.size / (1024 * 1024)).toFixed(2)} MB`
-                  : "PDF, DOC, DOCX, XLS, XLSX · Maksimal 50 MB"}
+                  : "Kosongkan jika hanya ingin mengubah kontributor"}
               </span>
 
               <input
@@ -395,15 +424,6 @@ export default function EditSubmissionModal({
           {errorMessage && (
             <div className="ch-peserta-edit-message is-error" role="alert">
               {errorMessage}
-            </div>
-          )}
-
-          {successMessage && (
-            <div
-              className="ch-peserta-edit-message is-success"
-              role="status"
-            >
-              {successMessage}
             </div>
           )}
         </div>

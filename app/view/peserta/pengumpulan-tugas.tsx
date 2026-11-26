@@ -272,26 +272,26 @@ export default function PengumpulanTugas({
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
-      <div className="border-b border-slate-100 p-5">
-        <h2 className="text-lg font-bold text-slate-800">
+    <section className="ch-peserta-upload-panel">
+      <div className="ch-peserta-upload-header">
+        <h2 className="ch-peserta-upload-title">
           Pengumpulan Tugas
         </h2>
-        <p className="mt-1 text-sm text-slate-500">
+        <p className="ch-peserta-upload-description">
           Pantau deadline dan kumpulkan berkas tugas kelompokmu.
         </p>
       </div>
 
       {!groupId ? (
-        <p className="p-6 text-sm text-slate-600">
+        <p className="ch-peserta-upload-empty">
           Kamu belum memiliki kelompok aktif. Hubungi PIC divisi.
         </p>
       ) : assignments.length === 0 ? (
-        <p className="p-6 text-sm text-slate-600">
+        <p className="ch-peserta-upload-empty">
           Belum ada tugas di divisi ini.
         </p>
       ) : (
-        <div className="divide-y divide-slate-100">
+        <div className="ch-peserta-upload-list">
           {assignments.map((assignment) => {
             const submission = submissions.find(
               (item) => item.assignment_id === assignment.id
@@ -306,36 +306,32 @@ export default function PengumpulanTugas({
               contributors[assignment.id] ?? [];
 
             return (
-              <article key={assignment.id} className="space-y-4 p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-slate-800">
+              <article key={assignment.id} className="ch-peserta-upload-item">
+                <div className="ch-peserta-upload-item-heading">
+                  <div className="ch-peserta-upload-item-info">
+                    <h3 className="ch-peserta-upload-task-title">
                       {assignment.title}
                     </h3>
 
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="ch-peserta-upload-description">
                       {assignment.module || "Tanpa modul"}
                     </p>
 
                     {assignment.description && (
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-slate-600">
+                      <p className="ch-peserta-upload-task-description">
                         {assignment.description}
                       </p>
                     )}
 
-                    <p className="mt-2 text-sm text-slate-600">
+                    <p className="ch-peserta-upload-deadline">
                       Deadline: {formatDate(assignment.deadline)}
                     </p>
                   </div>
 
-                  <div className="shrink-0">
+                  <div className="ch-peserta-upload-status-wrapper">
                     {submission ? (
                       <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                          submission.status === "late"
-                            ? "bg-orange-100 text-orange-700"
-                            : "bg-green-100 text-green-700"
-                        }`}
+                        className={`ch-peserta-upload-status ${submission.status === "late" ? "is-late" : "is-submitted"}`}
                       >
                         {submission.status === "late"
                           ? "Terkumpul terlambat"
@@ -343,11 +339,7 @@ export default function PengumpulanTugas({
                       </span>
                     ) : (
                       <span
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-                          isLate
-                            ? "bg-red-100 text-red-700"
-                            : "bg-amber-100 text-amber-700"
-                        }`}
+                        className={`ch-peserta-upload-status ${isLate ? "is-late" : "is-pending"}`}
                       >
                         {isLate
                           ? "Belum dikumpulkan"
@@ -358,21 +350,21 @@ export default function PengumpulanTugas({
                 </div>
 
                 {submission && (
-                  <div className="rounded-xl bg-green-50 p-3 text-sm text-green-800">
+                  <div className="ch-peserta-upload-file-info">
                     <p className="font-semibold">File terkumpul</p>
-                    <p className="mt-1 break-all">{submission.file_name}</p>
-                    <p className="mt-1 text-xs text-green-700">
+                    <p className="ch-peserta-upload-file-name">{submission.file_name}</p>
+                    <p className="ch-peserta-upload-file-date">
                       Dikirim: {formatDate(submission.submitted_at)}
                     </p>
                   </div>
                 )}
 
                 {isLeader ? (
-                  <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="ch-peserta-upload-form">
                     <div>
                       <label
                         htmlFor={`file-${assignment.id}`}
-                        className="mb-2 block text-sm font-semibold text-slate-700"
+                        className="ch-peserta-upload-label"
                       >
                         {submission ? "Unggah revisi tugas" : "Pilih file tugas"}
                       </label>
@@ -389,35 +381,35 @@ export default function PengumpulanTugas({
                             [assignment.id]: nextFile,
                           }));
                         }}
-                        className="block w-full text-sm text-slate-600 file:mr-3 file:rounded-lg file:border-0 file:bg-blue-100 file:px-4 file:py-2 file:font-semibold file:text-blue-700 hover:file:bg-blue-200 disabled:opacity-50"
+                        className="ch-peserta-upload-file-input"
                       />
 
-                      <p className="mt-2 text-xs text-slate-500">
+                      <p className="ch-peserta-upload-hint">
                         PDF, DOC, DOCX, XLS, XLSX. Maksimal 50 MB.
                       </p>
 
                       {selectedFile && (
-                        <p className="mt-2 text-xs text-slate-600">
+                        <p className="ch-peserta-upload-selected-file">
                           {selectedFile.name} · {formatFileSize(selectedFile.size)}
                         </p>
                       )}
                     </div>
 
                     <div>
-                      <p className="mb-2 text-sm font-semibold text-slate-700">
+                      <p className="ch-peserta-upload-label">
                         Anggota yang berkontribusi
                       </p>
 
                       {groupMembers.length === 0 ? (
-                        <p className="text-sm text-slate-500">
+                        <p className="ch-peserta-upload-hint">
                           Data anggota kelompok tidak tersedia.
                         </p>
                       ) : (
-                        <div className="grid gap-2 sm:grid-cols-2">
+                        <div className="ch-peserta-upload-members">
                           {groupMembers.map((member) => (
                             <label
                               key={member.user_id}
-                              className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-700"
+                              className="ch-peserta-upload-member"
                             >
                               <input
                                 type="checkbox"
@@ -431,7 +423,7 @@ export default function PengumpulanTugas({
                                     member.user_id
                                   )
                                 }
-                                className="h-4 w-4 rounded border-slate-300 text-blue-600"
+                                className="ch-peserta-upload-checkbox"
                               />
                               <span>{member.full_name}</span>
                             </label>
@@ -439,19 +431,19 @@ export default function PengumpulanTugas({
                         </div>
                       )}
 
-                      <p className="mt-2 text-xs text-slate-500">
+                      <p className="ch-peserta-upload-hint">
                         Dipilih: {selectedContributors.length}/7 anggota.
                       </p>
                     </div>
 
                     {errors[assignment.id] && (
-                      <p className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                      <p className="ch-peserta-upload-message is-error">
                         {errors[assignment.id]}
                       </p>
                     )}
 
                     {notices[assignment.id] && (
-                      <p className="rounded-lg bg-green-50 p-3 text-sm text-green-700">
+                      <p className="ch-peserta-upload-message is-success">
                         {notices[assignment.id]}
                       </p>
                     )}
@@ -460,7 +452,7 @@ export default function PengumpulanTugas({
                       type="button"
                       onClick={() => void submitAssignment(assignment)}
                       disabled={isBusy}
-                      className="w-full rounded-xl bg-blue-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+                      className="ch-peserta-upload-submit"
                     >
                       {isBusy
                         ? "Mengunggah dan menyimpan..."
@@ -470,7 +462,7 @@ export default function PengumpulanTugas({
                     </button>
                   </div>
                 ) : (
-                  <p className="rounded-xl bg-slate-50 p-3 text-sm text-slate-500">
+                  <p className="ch-peserta-upload-restriction">
                     Hanya ketua kelompok yang dapat mengunggah atau merevisi tugas.
                   </p>
                 )}
